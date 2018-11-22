@@ -88,7 +88,7 @@ int ImuManager::rosSetup()
   calibrate_gyros_ = nh_.serviceClient<std_srvs::Trigger>("calibrate_imu_gyro");
   robot_toggle_ = nh_.serviceClient<robotnik_msgs::enable_disable>("robotnik_base_control/enable");
 
-  calibrate_server_ = nh_.advertiseService("trigger_calibration", &ImuManager::triggerCalibrationCallback, this);
+  calibrate_server_ = pnh_.advertiseService("trigger_calibration", &ImuManager::triggerCalibrationCallback, this);
 
   internal_state_pub_ = pnh_.advertise<std_msgs::String>("calibration_state", 1);
   return RComponent::rosSetup();
