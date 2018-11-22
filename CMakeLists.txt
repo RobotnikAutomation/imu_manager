@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   rcomponent
   roscpp
   sensor_msgs
+  robotnik_msgs
 )
 
 ## System dependencies are found with CMake's conventions

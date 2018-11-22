@@ -16,7 +16,9 @@
 
 #include <boost/circular_buffer.hpp>
 
+#include <std_msgs/String.h>
 #include <std_srvs/Trigger.h>
+#include <robotnik_msgs/enable_disable.h>
 
 namespace imu_manager
 {
@@ -39,6 +41,7 @@ public:
 
 protected:
   virtual void rosReadParams();
+  virtual void rosPublish();
 
   //! Actions performed for all states
   virtual void initState();
@@ -69,6 +72,10 @@ protected:
   // false: does not need to calibrate
   virtual bool mustRunCalibration();
 
+  // true: can run calibration process
+  // false: cannot run calibration process
+  virtual bool canRunCalibration();
+
   // true: calibration has been started properly
   // false: calibration couldn't be started
   virtual bool runCalibration();
@@ -76,6 +83,25 @@ protected:
   // true: calibration has been triggered and haven't finished yet
   // false: calibration is not running
   virtual bool isRunningCalibration();
+
+  // true: calibration can be checked, maybe automatic or triggered
+  // false: calibration cannot be checked
+  virtual bool canCheckCalibration();
+
+  // true: system has enough data (depending on time of data gathering, number of data gathered) to check calibration
+  // false: system need to gather more data
+  virtual bool hasEnoughDataToCalibrate();
+
+  // input
+  // toggle: true, robot will be able to move
+  // toggle: false, robot will not be able to move
+  // output
+  // true, robot operation has been set
+  // false, robot operation couldn't be set
+  virtual bool toggleRobotOperation(bool toggle);
+
+  // true: calibration can be checked, maybe automatic or triggered
+  // false: calibration cannot be checked
 
   // real implementation of the methods. in case we have different sensors
   virtual bool checkHardwareConnectionImpl();
@@ -98,6 +124,7 @@ private:
 
   void dataCallback(const sensor_msgs::Imu::ConstPtr& input);
   void temperatureCallback(const sensor_msgs::Temperature::ConstPtr& input);
+  bool triggerCalibrationCallback(std_srvs::Trigger::Request& request, std_srvs::Trigger::Response& response);
 
   std::vector<double> z_angular_velocity_buffer_;
   // boost::circular_buffer<double> z_angular_velocity_buffer_;
@@ -120,6 +147,8 @@ private:
   ros::Subscriber data_sub_, temperature_sub_;
   std::vector<TopicHealthMonitor> data_health_monitors_;
 
+  ros::Publisher internal_state_pub_;
+
   StateMachine calibration_state_;
 
   std::string data_topic_;
@@ -128,6 +157,15 @@ private:
   ros::Time time_of_last_calibration_;
   ros::Time start_of_calibration_;
   ros::Duration period_between_checkings_;
+  ros::Duration period_of_data_gathering_;
+
+  bool calibration_only_under_demand_;
+  bool calibration_demanded_;
+  ros::ServiceServer calibrate_server_;
+
+  // ROBOT
+  ros::ServiceClient robot_toggle_;
+
   // MAVROS
   ros::Duration period_of_calibration_;
   ros::ServiceClient calibrate_gyros_;

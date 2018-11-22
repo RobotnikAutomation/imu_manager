@@ -44,13 +44,35 @@ void ImuManager::rosReadParams()
   temperature_topic_ = "imu/temperature";
   readParam(pnh_, "temperature_topic", temperature_topic_, temperature_topic_, required);
 
-  double period = 25;  // this is for mavros
+  calibration_only_under_demand_ = false;
+  readParam(pnh_, "calibration_only_under_demand", calibration_only_under_demand_, calibration_only_under_demand_,
+            required);
+
+  double period;
+  period = 25;  // this is for mavros
   readParam(pnh_, "period_of_calibration", period, period, required);
   period_of_calibration_ = ros::Duration(period);
 
+  period = 10;
+  readParam(pnh_, "period_between_checkings", period, period, required);
+  period_between_checkings_ = ros::Duration(period);
+
+  period = 5;
+  readParam(pnh_, "period_of_data_gathering", period, period, required);
+  period_of_data_gathering_ = ros::Duration(period);
   // int buffer_size_ = 100;
   // z_angular_velocity_buffer_ = boost::circular_buffer<double>(buffer_size_);
   // z_angular_velocity_buffer_
+}
+
+void ImuManager::rosPublish()
+{
+  std_msgs::String msg;
+  msg.data = calibration_state_.getCurrentState();
+
+  internal_state_pub_.publish(msg);
+
+  RComponent::rosPublish();
 }
 
 int ImuManager::rosSetup()
@@ -64,6 +86,11 @@ int ImuManager::rosSetup()
   }
 
   calibrate_gyros_ = nh_.serviceClient<std_srvs::Trigger>("calibrate_imu_gyro");
+  robot_toggle_ = nh_.serviceClient<robotnik_msgs::enable_disable>("robotnik_base_control/enable");
+
+  calibrate_server_ = nh_.advertiseService("trigger_calibration", &ImuManager::triggerCalibrationCallback, this);
+
+  internal_state_pub_ = pnh_.advertise<std_msgs::String>("calibration_state", 1);
   return RComponent::rosSetup();
 }
 
@@ -106,7 +133,8 @@ void ImuManager::readyState()
     return;
   }
 
-  if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN)
+  if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN or
+      calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED)
   {
     calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
   }
@@ -124,10 +152,16 @@ void ImuManager::readyState()
       return;
     }
 
-    period_between_checkings_ = ros::Duration(10);
     if ((ros::Time::now() - time_of_last_calibration_) > period_between_checkings_)
     {
       calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "period between calibrations has been exceeded");
+      return;
+    }
+
+    if (true == calibration_demanded_)
+    {
+      calibration_demanded_ = false;
+      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
     }
 
     return;
@@ -135,36 +169,55 @@ void ImuManager::readyState()
 
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CHECK)
   {
-    // TODO: refactor
-    // TODO: add method for cancheck
+    bool can_check = canCheckCalibration();
 
-    data_buffer_.clear();
-    z_angular_velocity_buffer_.clear();
-    calibration_state_.setDesiredState(CalibrationState::CHECKING);
+    if (true == can_check)
+    {
+      // clear data
+      data_buffer_.clear();
+      z_angular_velocity_buffer_.clear();
+
+      // disable robot
+      toggleRobotOperation(false);
+
+      calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
+      return;
+    }
+    if (false == can_check)
+    {
+      RCOMPONENT_WARN_THROTTLE(10, "Cannot check current calibration");
+      return;
+    }
     return;
   }
 
   if (calibration_state_.getCurrentState() == CalibrationState::CHECKING)
   {
-    // TODO: refactor to "hasEnoughData"
-    if (data_buffer_.size() == 0)
-      return;
-    double min_time_for_data_gathering = 3.0;
-    double time_of_data_gathering = (data_buffer_.back().header.stamp - data_buffer_.front().header.stamp).toSec();
-    if (time_of_data_gathering < min_time_for_data_gathering)
+    if (hasEnoughDataToCalibrate() == false)
     {
       RCOMPONENT_INFO_STREAM_THROTTLE(1, "Not enough data gathered");
       return;
     }
-    if (mustRunCalibration() == true)
+
+    bool must_calibrate = mustRunCalibration();
+
+    if (true == must_calibrate)
     {
+      // should enable robot now??
+      // toggleRobotOperation(true);
+
       calibration_state_.setDesiredState(CalibrationState::MUST_CALIBRATE, "Imu is not calibrated");
       return;
     }
-    if (mustRunCalibration() == false)
+    if (false == must_calibrate)
     {
+      // set last calibration stamps
       time_of_last_calibration_ = ros::Time::now();
       temperature_at_last_calibration_ = current_temperature_;
+
+      // enable robot
+      toggleRobotOperation(true);
+
       calibration_state_.setDesiredState(CalibrationState::CALIBRATED, "Imu is calibrated");
       return;
     }
@@ -173,34 +226,52 @@ void ImuManager::readyState()
 
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CALIBRATE)
   {
-    // TODO: add canCalibrate, for automatic or triggered calibration
-    // TODO: check run calibration
-    bool result = runCalibration();
-    if (result == true)
+    bool can_run_calibration = canRunCalibration();
+
+    if (false == can_run_calibration)
+    {
+      RCOMPONENT_WARN_THROTTLE(10, "I need to run calibration, but I am not able to do it");
+      return;
+    }
+
+    // disable robot (should already disabled, just in case)
+    bool robot_disabled = toggleRobotOperation(false);
+
+    if (false == robot_disabled)
+    {
+      calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Robot movement couldn't be disabled");
+      return;
+    }
+
+    bool started_calibration = runCalibration();
+    if (true == started_calibration)
     {
       calibration_state_.setDesiredState(CalibrationState::CALIBRATING, "Imu is not calibrated");
       return;
     }
-    if (result == false)
+    if (false == started_calibration)
     {
-      calibration_state_.setDesiredState(CalibrationState::UNKNOWN, "Calibration process could not start");
+      calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process could not start");
       switchToState(robotnik_msgs::State::FAILURE_STATE);
       return;
     }
+    return;
   }
 
   if (calibration_state_.getCurrentState() == CalibrationState::CALIBRATING)
   {
-    if (true == isRunningCalibration())
+    bool running_calibration = isRunningCalibration();
+    if (true == running_calibration)
     {
       RCOMPONENT_INFO_STREAM_THROTTLE(1, "Running calibration");
       return;
     }
-    if (false == isRunningCalibration())
+    if (false == running_calibration)
     {
       calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "After finishing calibration");
       return;
     }
+    return;
   }
 }
 
@@ -242,6 +313,58 @@ void ImuManager::allState()
 {
   RComponent::allState();
   calibration_state_.switchToDesiredState();
+}
+
+bool ImuManager::canRunCalibration()
+{
+  // could be autonomous or triggered
+  if (true == calibration_only_under_demand_ and false == calibration_demanded_)
+    return false;
+
+  return true;
+}
+
+bool ImuManager::canCheckCalibration()
+{
+  // could be autonomous or triggered
+  if (true == calibration_only_under_demand_ and false == calibration_demanded_)
+    return false;
+
+  return true;
+}
+
+bool ImuManager::toggleRobotOperation(bool toggle)
+{
+  // should contact service enable/disable in robot
+  robotnik_msgs::enable_disable rt;
+  rt.request.value = toggle;
+
+  bool result = robot_toggle_.call(rt);
+
+  if (result == false)
+  {
+    RCOMPONENT_ERROR_STREAM("Couldn't contact service: " << robot_toggle_.getService());
+    return false;
+  }
+
+  if (rt.response.ret == false)
+  {
+    RCOMPONENT_ERROR_STREAM("Robot could not be disabled due to an unkown reason");
+    return false;
+  }
+
+  return true;
+}
+
+bool ImuManager::hasEnoughDataToCalibrate()
+{
+  if (data_buffer_.size() == 0)
+    return false;
+
+  if ((data_buffer_.back().header.stamp - data_buffer_.front().header.stamp) < period_of_data_gathering_)
+    return false;
+
+  return true;
 }
 
 bool ImuManager::checkHardwareConnection()
@@ -483,6 +606,25 @@ bool ImuManager::stopSoftwareImpl()
 {
   data_health_monitors_.clear();
   data_subscribers_.clear();
+
+  return true;
+}
+
+bool ImuManager::triggerCalibrationCallback(std_srvs::Trigger::Request& request, std_srvs::Trigger::Response& response)
+{
+  if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN or
+      calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED or
+      calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
+  {
+    calibration_demanded_ = true;
+    response.success = true;
+    response.message = "Calibration triggered";
+  }
+  else
+  {
+    response.success = true;
+    response.message = "Calibration was running, so this call had no effect";
+  }
 
   return true;
 }

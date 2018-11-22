@@ -52,12 +52,17 @@
   <build_depend>rcomponent</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>sensor_msgs</build_depend>
+  <build_depend>robotnik_msgs</build_depend>
+
   <build_export_depend>rcomponent</build_export_depend>
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
+  <build_export_depend>robotnik_msgs</build_export_depend>
+
   <exec_depend>rcomponent</exec_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>robotnik_msgs</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
