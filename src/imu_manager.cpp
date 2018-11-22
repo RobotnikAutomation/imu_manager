@@ -48,11 +48,11 @@ void ImuManager::rosReadParams()
   readParam(pnh_, "calibration_only_under_demand", calibration_only_under_demand_, calibration_only_under_demand_,
             required);
 
-  double period;
-  period = 25;  // this is for mavros
-  readParam(pnh_, "period_of_calibration", period, period, required);
-  period_of_calibration_ = ros::Duration(period);
+  temperature_variation_for_calibration_ = 1;
+  readParam(pnh_, "temperature_variation_for_calibration", temperature_variation_for_calibration_,
+            temperature_variation_for_calibration_, required);
 
+  double period;
   period = 10;
   readParam(pnh_, "period_between_checkings", period, period, required);
   period_between_checkings_ = ros::Duration(period);
@@ -60,6 +60,12 @@ void ImuManager::rosReadParams()
   period = 5;
   readParam(pnh_, "period_of_data_gathering", period, period, required);
   period_of_data_gathering_ = ros::Duration(period);
+
+  double duration;
+  duration = 40;  // this is for mavros
+  readParam(pnh_, "duration_of_calibration", duration, duration, required);
+  duration_of_calibration_ = ros::Duration(duration);
+
   // int buffer_size_ = 100;
   // z_angular_velocity_buffer_ = boost::circular_buffer<double>(buffer_size_);
   // z_angular_velocity_buffer_
@@ -142,20 +148,24 @@ void ImuManager::readyState()
   if (calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
   {
     temperature_variation_for_calibration_ = 1.0;
-    if (std::abs(current_temperature_ - temperature_at_last_calibration_) > temperature_variation_for_calibration_)
+    if (calibration_only_under_demand_ == false)
     {
-      RCOMPONENT_INFO_STREAM("Must check calibration due to a change in the IMU temperatue. Current temperature: "
-                             << current_temperature_
-                             << ", temperature at last calibration: " << temperature_at_last_calibration_
-                             << ", variation allowed: " << temperature_variation_for_calibration_);
-      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
-      return;
-    }
+      if (std::abs(current_temperature_ - temperature_at_last_calibration_) > temperature_variation_for_calibration_)
+      {
+        RCOMPONENT_INFO_STREAM("Must check calibration due to a change in the IMU temperature. Current temperature: "
+                               << current_temperature_
+                               << ", temperature at last calibration: " << temperature_at_last_calibration_
+                               << ", variation allowed: " << temperature_variation_for_calibration_);
+        calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
+        return;
+      }
 
-    if ((ros::Time::now() - time_of_last_calibration_) > period_between_checkings_)
-    {
-      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "period between calibrations has been exceeded");
-      return;
+      if ((ros::Time::now() - time_of_last_calibration_) > period_between_checkings_)
+      {
+        calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "period between calibrations has been "
+                                                                         "exceeded");
+        return;
+      }
     }
 
     if (true == calibration_demanded_)
@@ -518,7 +528,7 @@ bool ImuManager::isRunningCalibration()
 {
   // this implementation works for mavros
 
-  return (ros::Time::now() - start_of_calibration_) < period_of_calibration_;
+  return (ros::Time::now() - start_of_calibration_) < duration_of_calibration_;
 }
 
 // Implementation methods: to be implemented when different sensor is used

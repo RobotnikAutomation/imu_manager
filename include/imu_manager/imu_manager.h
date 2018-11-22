@@ -167,7 +167,7 @@ private:
   ros::ServiceClient robot_toggle_;
 
   // MAVROS
-  ros::Duration period_of_calibration_;
+  ros::Duration duration_of_calibration_;
   ros::ServiceClient calibrate_gyros_;
 };
 }  // namespace
