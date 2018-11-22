@@ -1,0 +1,5 @@
+max_mean_error: 0.001
+max_std_dev: 1
+data_topic: "vectornav/imu/data"
+temperature_topic: "vectornav/imu/temperature"
+temperature_deviation_for_calibration: 1
