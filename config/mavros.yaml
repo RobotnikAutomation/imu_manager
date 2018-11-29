@@ -1,5 +1,8 @@
-max_mean_error: 0.001
+max_mean_error: 0.1
 max_std_dev: 1
 data_topic: "mavros/imu/data"
 temperature_topic: "mavros/imu/temperature_imu"
-temperature_deviation_for_calibration: 1
+temperature_variation_for_calibration: 2
+calibration_only_under_demand: true
+period_between_checkings: 60
+period_of_data_gathering: 2
