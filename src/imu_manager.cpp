@@ -11,6 +11,7 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   rosReadParams();
   sw_initialized_ = sw_running_ = false;
   hw_initialized_ = hw_running_ = false;
+  calibration_demanded_ = false;
 
   calibration_state_.addState(CalibrationState::CALIBRATED);
   calibration_state_.addState(CalibrationState::MUST_CHECK);
@@ -142,7 +143,18 @@ void ImuManager::readyState()
   if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN or
       calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED)
   {
-    calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
+	if (calibration_only_under_demand_ == false)
+    {  
+      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
+    }
+    else if (true == calibration_demanded_)
+    {
+      calibration_demanded_ = false;
+      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
+    }
+    else{
+		RCOMPONENT_WARN_THROTTLE(10, "Waiting for calibration trigger");
+	}
   }
 
   if (calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
@@ -168,7 +180,7 @@ void ImuManager::readyState()
       }
     }
 
-    if (true == calibration_demanded_)
+    else if (true == calibration_demanded_)
     {
       calibration_demanded_ = false;
       calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
@@ -179,8 +191,9 @@ void ImuManager::readyState()
 
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CHECK)
   {
-    bool can_check = canCheckCalibration();
-
+    //bool can_check = canCheckCalibration();
+    bool can_check = true;
+    
     if (true == can_check)
     {
       // clear data
@@ -338,7 +351,10 @@ bool ImuManager::canCheckCalibration()
 {
   // could be autonomous or triggered
   if (true == calibration_only_under_demand_ and false == calibration_demanded_)
+  {
+	RCOMPONENT_INFO_THROTTLE(5, "calibration_only_under_demand = %d, calibration_demanded = %d", calibration_only_under_demand_, calibration_demanded_);
     return false;
+  }
 
   return true;
 }
