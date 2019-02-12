@@ -24,6 +24,7 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   calibration_state_.setDesiredState(CalibrationState::UNKNOWN);
   
   time_of_last_calibration_ = ros::Time(0);
+  time_of_last_state_transition_ = ros::Time(0);
   temperature_at_last_calibration_ = 0.0;
 }
 
@@ -287,6 +288,9 @@ void ImuManager::readyState()
 
 void ImuManager::emergencyState()
 {
+  if (getElapsedTimeSinceLastStateTransition() < WAITING_TIME_BEFORE_RECOVERY)
+    return;
+    
   stopSoftware();
 
   if (checkHardwareConnection() == false)
@@ -303,6 +307,9 @@ void ImuManager::emergencyState()
 
 void ImuManager::failureState()
 {
+  if (getElapsedTimeSinceLastStateTransition() < WAITING_TIME_BEFORE_RECOVERY)
+    return;
+    
   if (hw_running_ == true)
   {
     stopHardware();
@@ -561,8 +568,20 @@ bool ImuManager::checkSoftwareConnectionImpl()
     {
       fail = true;
       // RCOMPONENT_ERROR_STREAM("Topic " << dhm.getSubscriber()->getTopic() << " is not being received");
-      RCOMPONENT_ERROR_STREAM("Topic " << dhm.getTopic() << " is not being received");
+      RCOMPONENT_ERROR_STREAM_THROTTLE(5, "Topic " << dhm.getTopic() << " is not being received");
     }
+  }
+  
+  // Checking service clients
+  if (calibrate_gyros_.exists() == false)
+  {
+	  fail = true;
+      RCOMPONENT_ERROR_STREAM_THROTTLE(5,"Service " << calibrate_gyros_.getService() << " does not exists");
+  }
+  if (robot_toggle_.exists() == false)
+  {
+	  fail = true;
+      RCOMPONENT_ERROR_STREAM_THROTTLE(5,"Service " << robot_toggle_.getService() << " does not exists");
   }
 
   return (not fail);
@@ -726,4 +745,30 @@ bool ImuManager::runCalibrationImpl()
 
   return true;
 }
+
+/*!	\fn void ImuManager::switchToState(int new_state)
+ * 	function that switches the state of the component into the desired state
+ * 	\param new_state as an integer, the new state of the component
+*/
+void ImuManager::switchToState(int new_state)
+{
+  if (new_state == state)
+    return;
+
+  // saves the previous state
+  previous_state = state;
+  time_of_last_state_transition_ = ros::Time::now();
+  
+  RCOMPONENT_INFO("%s -> %s", getStateString(state), getStateString(new_state));
+  state = new_state;
+}
+
+/*!	\fn int ImuManager::getElapsedTimeSinceLastStateTransition()
+ * 	Returns elapsed time since last state transition
+*/
+int ImuManager::getElapsedTimeSinceLastStateTransition()
+{
+  return (ros::Time::now() - time_of_last_state_transition_).toSec(); 
+}
+
 }  // namespace

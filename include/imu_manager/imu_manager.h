@@ -22,6 +22,9 @@
 
 namespace imu_manager
 {
+
+#define WAITING_TIME_BEFORE_RECOVERY 5.0
+	
 namespace CalibrationState
 {
 std::string CALIBRATED = "calibrated";
@@ -118,6 +121,10 @@ protected:
 
   virtual double getMean();
   virtual double getStdDev();
+  
+  virtual void switchToState(int new_state);
+  
+  int getElapsedTimeSinceLastStateTransition();
 
 private:
   ros::NodeHandle gnh_;
@@ -156,6 +163,7 @@ private:
 
   ros::Time time_of_last_calibration_;
   ros::Time start_of_calibration_;
+  ros::Time time_of_last_state_transition_;
   ros::Duration period_between_checkings_;
   ros::Duration period_of_data_gathering_;
 
