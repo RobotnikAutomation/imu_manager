@@ -22,6 +22,9 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   calibration_state_.addState(CalibrationState::UNKNOWN);
 
   calibration_state_.setDesiredState(CalibrationState::UNKNOWN);
+  
+  time_of_last_calibration_ = ros::Time(0);
+  temperature_at_last_calibration_ = 0.0;
 }
 
 ImuManager::~ImuManager()
@@ -141,27 +144,11 @@ void ImuManager::readyState()
   }
 
   if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN or
-      calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED)
+      calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED or
+      calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
   {
 	if (calibration_only_under_demand_ == false)
     {  
-      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
-    }
-    else if (true == calibration_demanded_)
-    {
-      calibration_demanded_ = false;
-      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
-    }
-    else{
-		RCOMPONENT_WARN_THROTTLE(10, "Waiting for calibration trigger");
-	}
-  }
-
-  if (calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
-  {
-    temperature_variation_for_calibration_ = 1.0;
-    if (calibration_only_under_demand_ == false)
-    {
       if (std::abs(current_temperature_ - temperature_at_last_calibration_) > temperature_variation_for_calibration_)
       {
         RCOMPONENT_INFO_STREAM("Must check calibration due to a change in the IMU temperature. Current temperature: "
@@ -179,14 +166,14 @@ void ImuManager::readyState()
         return;
       }
     }
-
     else if (true == calibration_demanded_)
     {
       calibration_demanded_ = false;
       calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
     }
-
-    return;
+    else{
+		RCOMPONENT_WARN_THROTTLE(10, "Waiting for calibration trigger");
+	}
   }
 
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CHECK)
@@ -232,7 +219,7 @@ void ImuManager::readyState()
       calibration_state_.setDesiredState(CalibrationState::MUST_CALIBRATE, "Imu is not calibrated");
       return;
     }
-    if (false == must_calibrate)
+    else if (false == must_calibrate)
     {
       // set last calibration stamps
       time_of_last_calibration_ = ros::Time::now();
@@ -249,13 +236,13 @@ void ImuManager::readyState()
 
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CALIBRATE)
   {
-    bool can_run_calibration = canRunCalibration();
+    /*bool can_run_calibration = canRunCalibration();
 
     if (false == can_run_calibration)
     {
       RCOMPONENT_WARN_THROTTLE(10, "I need to run calibration, but I am not able to do it");
       return;
-    }
+    }*/
 
     // disable robot (should already disabled, just in case)
     bool robot_disabled = toggleRobotOperation(false);
@@ -389,7 +376,7 @@ bool ImuManager::hasEnoughDataToCalibrate()
 
   if ((data_buffer_.back().header.stamp - data_buffer_.front().header.stamp) < period_of_data_gathering_)
     return false;
-
+  RCOMPONENT_INFO("Using a buffer of %d elements gathered during %.3lf seconds", (int)data_buffer_.size(), (data_buffer_.back().header.stamp - data_buffer_.front().header.stamp).toSec());
   return true;
 }
 
@@ -691,27 +678,27 @@ bool ImuManager::isCalibratedImpl()
   bool calibrated = true;
   if (std::abs(data_mean_) > max_allowed_mean_error_)
   {
-    RCOMPONENT_WARN_STREAM_THROTTLE(1, "Imu z angular velocity (" << data_mean_
+    RCOMPONENT_WARN_STREAM_THROTTLE(1, "Imu z angular velocity mean(" << data_mean_
                                                                   << ") is bigger in abs than maximum allowed ("
                                                                   << max_allowed_mean_error_ << ")");
     calibrated = false;
   }
   else
   {
-    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Imu z angular velocity (" << data_mean_
+    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Imu z angular velocity mean (" << data_mean_
                                                                   << ") is lower in abs than maximum allowed ("
                                                                   << max_allowed_mean_error_ << ")");
   }
   if (std::abs(data_std_dev_) > max_allowed_std_deviation_)
   {
-    RCOMPONENT_WARN_STREAM_THROTTLE(1, "Imu z angular velocity (" << data_std_dev_
+    RCOMPONENT_WARN_STREAM_THROTTLE(1, "Imu z angular velocity std dev (" << data_std_dev_
                                                                   << ") is bigger in abs than maximum allowed ("
                                                                   << max_allowed_std_deviation_ << ")");
     calibrated = false;
   }
   else
   {
-    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Imu z angular velocity (" << data_std_dev_
+    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Imu z angular velocity std dev (" << data_std_dev_
                                                                   << ") is lower in abs than maximum allowed ("
                                                                   << max_allowed_std_deviation_ << ")");
   }
