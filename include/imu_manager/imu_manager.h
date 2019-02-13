@@ -135,6 +135,12 @@ protected:
   
   virtual void calculateDriftValues();
   virtual void clearBuffers();
+  
+  virtual void calibratedSubState();
+  virtual void mustCheckSubState();
+  virtual void checkingSubState();
+  virtual void mustCalibrateSubState();
+  virtual void calibratingSubState();
 
 private:
   ros::NodeHandle gnh_;
