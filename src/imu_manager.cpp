@@ -168,7 +168,7 @@ void ImuManager::readyState()
   {
 	if (calibration_only_under_demand_ == false)
     {  
-	  RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration in " <<  (time_for_next_check_ - ros::Time::now()).toSec() <<" seconds");
+	  RCOMPONENT_INFO_STREAM_THROTTLE(5, "Next calibration check in " <<  (time_for_next_check_ - ros::Time::now()).toSec() <<" seconds");
 	  
       if ((ros::Time::now() - time_for_next_check_) > ros::Duration(0))
       {
@@ -216,8 +216,7 @@ void ImuManager::readyState()
 		  if (isRobotMoving() == false)
 		  {
 		    // clear data
-            data_buffer_.clear();
-            z_angular_velocity_buffer_.clear();
+            clearBuffers();
 	        calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
 		  }else
 		  {
@@ -226,8 +225,7 @@ void ImuManager::readyState()
         }else
         {
           // clear data
-          data_buffer_.clear();
-          z_angular_velocity_buffer_.clear();
+          clearBuffers();
 	      calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
 	    }
 	  }else
@@ -261,6 +259,9 @@ void ImuManager::readyState()
 	  {
 	    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Not enough data gathered");
 	    return;
+	  }else
+	  {
+		calculateDriftValues();
 	  }
 	}else
 	{
@@ -781,11 +782,16 @@ void ImuManager::dataCallback(const sensor_msgs::Imu::ConstPtr& input)
   if (data_health_monitors_.size() > 0)
     data_health_monitors_[0].tick();
 
+  /*if (data_buffer_.size() > DEFAULT_IMU_BUFFER_SIZE)
+  {
+	  clearBuffers();
+	  RCOMPONENT_WARN("Clearing buffers due to max size reached (%d)", DEFAULT_IMU_BUFFER_SIZE);
+  }*/
   data_buffer_.push_back(*input);
   z_angular_velocity_buffer_.push_back(input->angular_velocity.z);
 
-  data_mean_ = calculateMean(z_angular_velocity_buffer_);
-  data_std_dev_ = calculateStdDev(z_angular_velocity_buffer_);
+  //RCOMPONENT_INFO_THROTTLE(5, "buffer size = %d", (int)data_buffer_.size());
+  
 }
 
 void ImuManager::temperatureCallback(const sensor_msgs::Temperature::ConstPtr& input)
@@ -917,6 +923,16 @@ bool ImuManager::isRobotMoving()
 bool ImuManager::isOdomBeingReceived()
 {
 	return data_health_monitors_[2].isReceiving();
+}
+
+void ImuManager::calculateDriftValues(){
+	data_mean_ = calculateMean(z_angular_velocity_buffer_);
+	data_std_dev_ = calculateStdDev(z_angular_velocity_buffer_);
+}
+
+void ImuManager::clearBuffers(){
+	data_buffer_.clear();
+	z_angular_velocity_buffer_.clear();
 }
 
 }  // namespace

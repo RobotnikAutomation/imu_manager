@@ -24,9 +24,10 @@
 namespace imu_manager
 {
 
-#define WAITING_TIME_BEFORE_RECOVERY 5.0
-#define DEFAULT_ODOM_LINEAR_HYSTERESIS 0.001 // m/s
+#define WAITING_TIME_BEFORE_RECOVERY 	5.0
+#define DEFAULT_ODOM_LINEAR_HYSTERESIS 	0.001 // m/s
 #define DEFAULT_ODOM_ANGULAR_HYSTERESIS 0.001 // rads/s
+#define DEFAULT_IMU_BUFFER_SIZE			3000  // number of elements to save
 	
 namespace CalibrationState
 {
@@ -131,6 +132,9 @@ protected:
   
   virtual bool isRobotMoving();
   virtual bool isOdomBeingReceived();
+  
+  virtual void calculateDriftValues();
+  virtual void clearBuffers();
 
 private:
   ros::NodeHandle gnh_;
