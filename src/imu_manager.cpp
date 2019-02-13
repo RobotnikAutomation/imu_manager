@@ -782,11 +782,11 @@ void ImuManager::dataCallback(const sensor_msgs::Imu::ConstPtr& input)
   if (data_health_monitors_.size() > 0)
     data_health_monitors_[0].tick();
 
-  /*if (data_buffer_.size() > DEFAULT_IMU_BUFFER_SIZE)
+  if (data_buffer_.size() > DEFAULT_IMU_BUFFER_SIZE)
   {
 	  clearBuffers();
 	  RCOMPONENT_WARN("Clearing buffers due to max size reached (%d)", DEFAULT_IMU_BUFFER_SIZE);
-  }*/
+  }
   data_buffer_.push_back(*input);
   z_angular_velocity_buffer_.push_back(input->angular_velocity.z);
 
