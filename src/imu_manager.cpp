@@ -26,6 +26,7 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   time_of_last_calibration_ = ros::Time(0);
   time_of_last_state_transition_ = ros::Time(0);
   temperature_at_last_calibration_ = 0.0;
+  time_for_next_check_ = ros::Time::now();
 }
 
 ImuManager::~ImuManager()
@@ -71,6 +72,21 @@ void ImuManager::rosReadParams()
   readParam(pnh_, "duration_of_calibration", duration, duration, required);
   duration_of_calibration_ = ros::Duration(duration);
 
+  calibration_by_temperature_ = true;
+  readParam(pnh_, "calibration_by_temperature", calibration_by_temperature_, calibration_by_temperature_, required);
+  
+  calibration_by_angular_velocity_deviation_ = false;
+  readParam(pnh_, "calibration_by_angular_velocity_deviation", calibration_by_angular_velocity_deviation_, calibration_by_angular_velocity_deviation_, required);
+  
+  calibration_odom_constraint_ = true;
+  readParam(pnh_, "calibration_odom_constraint", calibration_odom_constraint_, calibration_odom_constraint_, required);
+  
+  odom_topic_ = "robotnik_base_control/odom";
+  readParam(pnh_, "odom_topic", odom_topic_, odom_topic_, required);
+  
+  readParam(pnh_, "odom_linear_hysteresis", odom_linear_hysteresis_, DEFAULT_ODOM_LINEAR_HYSTERESIS, false);
+  readParam(pnh_, "odom_angular_hysteresis", odom_angular_hysteresis_, DEFAULT_ODOM_ANGULAR_HYSTERESIS, false);
+  
   // int buffer_size_ = 100;
   // z_angular_velocity_buffer_ = boost::circular_buffer<double>(buffer_size_);
   // z_angular_velocity_buffer_
@@ -144,23 +160,17 @@ void ImuManager::readyState()
     return;
   }
 
+  //
+  // UNKNOWN, NOT_CALIBRTED, CALIBRATED
   if (calibration_state_.getCurrentState() == CalibrationState::UNKNOWN or
       calibration_state_.getCurrentState() == CalibrationState::NOT_CALIBRATED or
       calibration_state_.getCurrentState() == CalibrationState::CALIBRATED)
   {
 	if (calibration_only_under_demand_ == false)
     {  
-      if (std::abs(current_temperature_ - temperature_at_last_calibration_) > temperature_variation_for_calibration_)
-      {
-        RCOMPONENT_INFO_STREAM("Must check calibration due to a change in the IMU temperature. Current temperature: "
-                               << current_temperature_
-                               << ", temperature at last calibration: " << temperature_at_last_calibration_
-                               << ", variation allowed: " << temperature_variation_for_calibration_);
-        calibration_state_.setDesiredState(CalibrationState::MUST_CHECK);
-        return;
-      }
-
-      if ((ros::Time::now() - time_of_last_calibration_) > period_between_checkings_)
+	  RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration in " <<  (time_for_next_check_ - ros::Time::now()).toSec() <<" seconds");
+	  
+      if ((ros::Time::now() - time_for_next_check_) > ros::Duration(0))
       {
         calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "period between calibrations has been "
                                                                          "exceeded");
@@ -172,44 +182,93 @@ void ImuManager::readyState()
       calibration_demanded_ = false;
       calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "calibration has been demanded");
     }
-    else{
+    else
+    {
 		RCOMPONENT_WARN_THROTTLE(10, "Waiting for calibration trigger");
 	}
   }
 
+  //
+  // MUST CHECK
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CHECK)
   {
     //bool can_check = canCheckCalibration();
-    bool can_check = true;
+    //bool can_check = true;
+    if (true == calibration_by_temperature_ and 
+          std::abs(current_temperature_ - temperature_at_last_calibration_) > temperature_variation_for_calibration_)
+    {
+      RCOMPONENT_INFO_STREAM("Must check calibration due to a change in the IMU temperature. Current temperature: "
+                             << current_temperature_
+                             << ", temperature at last calibration: " << temperature_at_last_calibration_
+                             << ", variation allowed: " << temperature_variation_for_calibration_);
+        
+      calibration_state_.setDesiredState(CalibrationState::MUST_CALIBRATE, "Calibration due to temperature variation is required");
+      return;
+    }
     
-    if (true == can_check)
+    if (true == calibration_by_angular_velocity_deviation_)
     {
-      // clear data
-      data_buffer_.clear();
-      z_angular_velocity_buffer_.clear();
-
-      // disable robot
-      toggleRobotOperation(false);
-
-      calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
+	  // disable robot
+      if (true == toggleRobotOperation(false))
+      {
+        if (calibration_odom_constraint_ == true)
+        {
+		  if (isRobotMoving() == false)
+		  {
+		    // clear data
+            data_buffer_.clear();
+            z_angular_velocity_buffer_.clear();
+	        calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
+		  }else
+		  {
+		    RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::MUST_CHECK << ". Waiting" );
+		  }
+        }else
+        {
+          // clear data
+          data_buffer_.clear();
+          z_angular_velocity_buffer_.clear();
+	      calibration_state_.setDesiredState(CalibrationState::CHECKING, "Calibration checking is enabled");
+	    }
+	  }else
+	  {
+	    RCOMPONENT_WARN_THROTTLE(5, "Error disabling robot. Required to gather data");
+	  }
       return;
     }
-    if (false == can_check)
-    {
-      RCOMPONENT_WARN_THROTTLE(10, "Cannot check current calibration");
-      return;
-    }
+    
+    RCOMPONENT_WARN_THROTTLE(10, "No calibration is needed for now");
+    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    calibration_state_.setDesiredState(calibration_state_.getPreviousState(), "Check for calibration failed");
     return;
   }
-
+  
+  //
+  // CHECKING
   if (calibration_state_.getCurrentState() == CalibrationState::CHECKING)
   {
-    if (hasEnoughDataToCalibrate() == false)
+	if (true == calibration_by_angular_velocity_deviation_)
     {
-      RCOMPONENT_INFO_STREAM_THROTTLE(1, "Not enough data gathered");
-      return;
-    }
-
+	  if (calibration_odom_constraint_ == true and isRobotMoving() == true)
+      {
+		RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::CHECKING << ". Cancelling calibration" );
+		time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+		calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration cancelled due to robot movement during data gathering");
+		return;
+      }
+      
+	  if (hasEnoughDataToCalibrate() == false)
+	  {
+	    RCOMPONENT_INFO_STREAM_THROTTLE(1, "Not enough data gathered");
+	    return;
+	  }
+	}else
+	{
+	  time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+	  calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration by angular velocity is disabled");
+	  return;
+	}
+	
     bool must_calibrate = mustRunCalibration();
 
     if (true == must_calibrate)
@@ -227,14 +286,19 @@ void ImuManager::readyState()
       temperature_at_last_calibration_ = current_temperature_;
 
       // enable robot
-      toggleRobotOperation(true);
-
+      if (false == toggleRobotOperation(true))
+      {
+        RCOMPONENT_ERROR("Error enabling the robot operation!!");
+      }
+      time_for_next_check_ = ros::Time::now() + period_between_checkings_;
       calibration_state_.setDesiredState(CalibrationState::CALIBRATED, "Imu is calibrated");
       return;
     }
     return;
   }
 
+  //
+  // MUST CALIBRATE
   if (calibration_state_.getCurrentState() == CalibrationState::MUST_CALIBRATE)
   {
     /*bool can_run_calibration = canRunCalibration();
@@ -245,14 +309,19 @@ void ImuManager::readyState()
       return;
     }*/
 
-    // disable robot (should already disabled, just in case)
-    bool robot_disabled = toggleRobotOperation(false);
-
-    if (false == robot_disabled)
+    if (false == toggleRobotOperation(false))
     {
+	  RCOMPONENT_ERROR("Error disabling the robot operation!!");
+	  time_for_next_check_ = ros::Time::now() + period_between_checkings_;
       calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Robot movement couldn't be disabled");
       return;
     }
+    
+    if (calibration_odom_constraint_ == true and isRobotMoving() == true)
+	{
+      RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::MUST_CALIBRATE << ". Waiting" );
+	  return;
+	}
 
     bool started_calibration = runCalibration();
     if (true == started_calibration)
@@ -262,24 +331,55 @@ void ImuManager::readyState()
     }
     if (false == started_calibration)
     {
+	  time_for_next_check_ = ros::Time::now() + period_between_checkings_;
       calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process could not start");
+      if (false == toggleRobotOperation(true))
+      {
+        RCOMPONENT_ERROR("Error enabling the robot operation!!");
+      }
       switchToState(robotnik_msgs::State::FAILURE_STATE);
       return;
     }
     return;
   }
-
+  
+  //
+  // CALIBRATING
   if (calibration_state_.getCurrentState() == CalibrationState::CALIBRATING)
   {
     bool running_calibration = isRunningCalibration();
     if (true == running_calibration)
     {
-      RCOMPONENT_INFO_STREAM_THROTTLE(1, "Running calibration");
+	  if (calibration_odom_constraint_ == true and isRobotMoving() == true)
+	  {
+        RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::CALIBRATING << ". Cancelling" );
+        calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process failed due to robot movement");
+        time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+	    return;
+	  }
+      RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration for " <<  (ros::Time::now() - start_of_calibration_).toSec() <<" seconds");
       return;
     }
     if (false == running_calibration)
     {
-      calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "After finishing calibration");
+	  
+      if (false == toggleRobotOperation(true))
+      {
+        RCOMPONENT_ERROR("Error enabling the robot operation!!");
+      }
+	  if (true == calibration_by_angular_velocity_deviation_)
+      {
+		calibration_state_.setDesiredState(CalibrationState::MUST_CHECK, "After finishing calibration");
+        return;
+      }
+      if (true == calibration_by_temperature_)
+      {
+		time_of_last_calibration_ = ros::Time::now();
+        temperature_at_last_calibration_ = current_temperature_;
+      }
+      
+	  time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+      calibration_state_.setDesiredState(CalibrationState::CALIBRATED, "After finishing calibration");
       return;
     }
     return;
@@ -630,6 +730,21 @@ bool ImuManager::startSoftwareImpl()
   temperature_sub_ = gnh_.subscribe(temperature_topic_, 1, &ImuManager::temperatureCallback, this);
   data_subscribers_.push_back(temperature_sub_);
   data_health_monitors_.push_back(TopicHealthMonitor(&temperature_sub_));
+  
+  if(calibration_odom_constraint_ == true)
+  {
+	  boost::shared_ptr<const nav_msgs::Odometry> odom_received =
+      ros::topic::waitForMessage<nav_msgs::Odometry>(odom_topic_, gnh_, ros::Duration(1));
+      if (odom_received == 0)
+	  {
+		RCOMPONENT_ERROR_STREAM("There are no publishers for " << odom_topic_ << ", software cannot be started");
+		return false;
+	  }
+	  // subscribe to odom
+	  odom_sub_ = gnh_.subscribe(odom_topic_, 1, &ImuManager::odomCallback, this);
+	  data_subscribers_.push_back(odom_sub_);
+	  data_health_monitors_.push_back(TopicHealthMonitor(&odom_sub_));
+  }
 
   return true;
 }
@@ -680,6 +795,15 @@ void ImuManager::temperatureCallback(const sensor_msgs::Temperature::ConstPtr& i
     data_health_monitors_[1].tick();
   }
   current_temperature_ = input->temperature;
+}
+
+void ImuManager::odomCallback(const nav_msgs::Odometry::ConstPtr& odom)
+{
+  if (data_health_monitors_.size() > 1)
+  {
+    data_health_monitors_[2].tick();
+  }
+  robot_odom_ = *odom;
 }
 
 double ImuManager::getMean()
@@ -769,6 +893,30 @@ void ImuManager::switchToState(int new_state)
 int ImuManager::getElapsedTimeSinceLastStateTransition()
 {
   return (ros::Time::now() - time_of_last_state_transition_).toSec(); 
+}
+
+
+/*!	\fn bool ImuManager::isRobotMoving()
+ * 	Returns true if robot is moving, false otherwise
+*/
+bool ImuManager::isRobotMoving()
+{
+  if (fabs(robot_odom_.twist.twist.linear.x) > odom_linear_hysteresis_ or
+	fabs(robot_odom_.twist.twist.linear.y) > odom_linear_hysteresis_ or
+	fabs(robot_odom_.twist.twist.angular.z) > odom_angular_hysteresis_)
+  {
+    return true;
+  }
+  return false;
+}
+
+
+/*!	\fn bool ImuManager::isOdomBeingReceived()
+ * 	Returns true if odom is being received
+*/
+bool ImuManager::isOdomBeingReceived()
+{
+	return data_health_monitors_[2].isReceiving();
 }
 
 }  // namespace

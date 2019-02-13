@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <launch>
- <arg name="debug" default="false" />
+    <arg name="debug" default="false" />
     <arg unless="$(arg debug)" name="launch_prefix" value="" />
     <arg     if="$(arg debug)" name="launch_prefix" value="terminator -m -x gdb --args" />
 
-	<node pkg="imu_manager" type="imu_manager_node" name="imu_manager" output="screen" launch-prefix="$(arg launch_prefix)"  > 
+    <node pkg="imu_manager" type="imu_manager_node" name="imu_manager" output="screen" launch-prefix="$(arg launch_prefix)"  > 
       <rosparam command="load" file="$(find imu_manager)/config/mavros.yaml" />	  
-	</node>	
+    </node>	
 	
 </launch>
 

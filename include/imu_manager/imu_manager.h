@@ -8,6 +8,7 @@
 
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/Temperature.h>
+#include <nav_msgs/Odometry.h>
 
 #include <rcomponent/rcomponent.h>
 
@@ -24,6 +25,8 @@ namespace imu_manager
 {
 
 #define WAITING_TIME_BEFORE_RECOVERY 5.0
+#define DEFAULT_ODOM_LINEAR_HYSTERESIS 0.001 // m/s
+#define DEFAULT_ODOM_ANGULAR_HYSTERESIS 0.001 // rads/s
 	
 namespace CalibrationState
 {
@@ -125,12 +128,16 @@ protected:
   virtual void switchToState(int new_state);
   
   int getElapsedTimeSinceLastStateTransition();
+  
+  virtual bool isRobotMoving();
+  virtual bool isOdomBeingReceived();
 
 private:
   ros::NodeHandle gnh_;
 
   void dataCallback(const sensor_msgs::Imu::ConstPtr& input);
   void temperatureCallback(const sensor_msgs::Temperature::ConstPtr& input);
+  void odomCallback(const nav_msgs::Odometry::ConstPtr& odom);
   bool triggerCalibrationCallback(std_srvs::Trigger::Request& request, std_srvs::Trigger::Response& response);
 
   std::vector<double> z_angular_velocity_buffer_;
@@ -146,12 +153,15 @@ private:
   double buffer_size_in_sec_;
   double max_allowed_mean_error_;
   double max_allowed_std_deviation_;
+  
+  double odom_linear_hysteresis_;
+  double odom_angular_hysteresis_;
 
   bool sw_initialized_, sw_running_;
   bool hw_initialized_, hw_running_;
 
   std::vector<ros::Subscriber> data_subscribers_;
-  ros::Subscriber data_sub_, temperature_sub_;
+  ros::Subscriber data_sub_, temperature_sub_, odom_sub_;
   std::vector<TopicHealthMonitor> data_health_monitors_;
 
   ros::Publisher internal_state_pub_;
@@ -160,17 +170,24 @@ private:
 
   std::string data_topic_;
   std::string temperature_topic_;
+  std::string odom_topic_;
 
   ros::Time time_of_last_calibration_;
   ros::Time start_of_calibration_;
   ros::Time time_of_last_state_transition_;
+  ros::Time time_for_next_check_;
   ros::Duration period_between_checkings_;
   ros::Duration period_of_data_gathering_;
 
   bool calibration_only_under_demand_;
   bool calibration_demanded_;
+  bool calibration_by_temperature_; // flag to enable calibration by temperature
+  bool calibration_by_angular_velocity_deviation_; // flag to enable calibration by deviation in angular velocity
+  bool calibration_odom_constraint_; // flag to enable the calibration by checking the odometry of the robot
+  
   ros::ServiceServer calibrate_server_;
 
+  nav_msgs::Odometry robot_odom_;
   // ROBOT
   ros::ServiceClient robot_toggle_;
 

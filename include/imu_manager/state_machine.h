@@ -12,6 +12,7 @@ private:
   std::vector<std::string> available_states_;
   std::string current_state_;
   std::string desired_state_;
+  std::string previous_state_;
 
   const std::string INVALID_STATE = "";
 
@@ -31,6 +32,7 @@ public:
     available_states_ = available_states;
     current_state_ = INVALID_STATE;
     desired_state_ = INVALID_STATE;
+    previous_state_ = INVALID_STATE;
   }
 
   bool addState(const std::string& state)
@@ -52,6 +54,11 @@ public:
   std::string getDesiredState()
   {
     return desired_state_;
+  }
+  
+  std::string getPreviousState()
+  {
+    return previous_state_;
   }
 
   bool isInState(const std::string& state)
@@ -76,6 +83,7 @@ public:
       return true;
 
     ROS_INFO_STREAM("Switching from " << current_state_ << " to " << state);
+    previous_state_ = current_state_;
     current_state_ = state;
 
     return true;
