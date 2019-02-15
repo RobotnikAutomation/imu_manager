@@ -27,6 +27,7 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   time_of_last_state_transition_ = ros::Time(0);
   temperature_at_last_calibration_ = 0.0;
   time_for_next_check_ = ros::Time::now();
+  
 }
 
 ImuManager::~ImuManager()
@@ -98,6 +99,36 @@ void ImuManager::rosPublish()
   msg.data = calibration_state_.getCurrentState();
 
   internal_state_pub_.publish(msg);
+  
+  ros::Time t_now = ros::Time::now();
+  status_msg_.header.stamp = t_now;
+  status_msg_.calibration_status = calibration_state_.getCurrentState();
+  if (calibration_only_under_demand_ == true)
+  {
+    status_msg_.next_check_countdown = -1;
+      
+  }else
+  {
+	if(status_msg_.calibration_status != CalibrationState::CALIBRATING and status_msg_.calibration_status != CalibrationState::UNKNOWN)
+	{
+		status_msg_.next_check_countdown = int((time_for_next_check_ - ros::Time::now()).toSec());
+	}else
+	{
+	  status_msg_.next_check_countdown = -1;
+    }
+  }
+  if (status_msg_.calibration_status == CalibrationState::CALIBRATING)
+  {
+	  status_msg_.calibration_duration = int((ros::Time::now() - start_of_calibration_).toSec());
+  }else
+  {
+	  status_msg_.calibration_duration = 0;
+  }
+  status_msg_.imu_temperature = current_temperature_;
+  status_msg_.calibrated_imu_temperature = temperature_at_last_calibration_;
+  status_msg_.robot_moving = (calibration_odom_constraint_ == true and isRobotMoving() == true);
+  
+  internal_status_pub_.publish(status_msg_);
 
   RComponent::rosPublish();
 }
@@ -118,6 +149,8 @@ int ImuManager::rosSetup()
   calibrate_server_ = pnh_.advertiseService("trigger_calibration", &ImuManager::triggerCalibrationCallback, this);
 
   internal_state_pub_ = pnh_.advertise<std_msgs::String>("calibration_state", 1);
+  internal_status_pub_ = pnh_.advertise<imu_manager::ImuManagerStatus>("status", 1);
+  
   return RComponent::rosSetup();
 }
 
@@ -755,7 +788,7 @@ void ImuManager::calibratedSubState(){
 	
   if (calibration_only_under_demand_ == false)
   {  
-	RCOMPONENT_INFO_STREAM_THROTTLE(5, "Next calibration check in " <<  (time_for_next_check_ - ros::Time::now()).toSec() <<" seconds");
+	//RCOMPONENT_INFO_STREAM_THROTTLE(5, "Next calibration check in " <<  (time_for_next_check_ - ros::Time::now()).toSec() <<" seconds");
 	  
     if ((ros::Time::now() - time_for_next_check_) > ros::Duration(0))
     {
@@ -934,7 +967,7 @@ void ImuManager::calibratingSubState(){
         time_for_next_check_ = ros::Time::now() + period_between_checkings_;
 	    return;
 	  }
-      RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration for " <<  (ros::Time::now() - start_of_calibration_).toSec() <<" seconds");
+      //RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration for " <<  (ros::Time::now() - start_of_calibration_).toSec() <<" seconds");
       return;
     }
     if (false == running_calibration)

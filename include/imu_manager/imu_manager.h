@@ -14,6 +14,7 @@
 
 #include <imu_manager/topic_health_monitor.h>
 #include <imu_manager/state_machine.h>
+#include <imu_manager/ImuManagerStatus.h>
 
 #include <boost/circular_buffer.hpp>
 
@@ -175,6 +176,7 @@ private:
   std::vector<TopicHealthMonitor> data_health_monitors_;
 
   ros::Publisher internal_state_pub_;
+  ros::Publisher internal_status_pub_;
 
   StateMachine calibration_state_;
 
@@ -204,6 +206,8 @@ private:
   // MAVROS
   ros::Duration duration_of_calibration_;
   ros::ServiceClient calibrate_gyros_;
+  
+  imu_manager::ImuManagerStatus status_msg_;
 };
 }  // namespace
 #endif  // _IMU_MANAGER_IMU_MANAGER_
