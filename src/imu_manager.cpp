@@ -963,6 +963,10 @@ void ImuManager::calibratingSubState(){
 	  if (calibration_odom_constraint_ == true and isRobotMoving() == true)
 	  {
         RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::CALIBRATING << ". Cancelling" );
+        if (false == toggleRobotOperation(true))
+        {
+          RCOMPONENT_ERROR("Error enabling the robot operation!!");
+        }
         calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process failed due to robot movement");
         time_for_next_check_ = ros::Time::now() + period_between_checkings_;
 	    return;
