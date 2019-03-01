@@ -26,7 +26,6 @@ ImuManager::ImuManager(ros::NodeHandle h) : RComponent(h)
   time_of_last_calibration_ = ros::Time(0);
   time_of_last_state_transition_ = ros::Time(0);
   temperature_at_last_calibration_ = 0.0;
-  time_for_next_check_ = ros::Time::now();
 }
 
 ImuManager::~ImuManager()
@@ -88,6 +87,10 @@ void ImuManager::rosReadParams()
   readParam(pnh_, "odom_linear_hysteresis", odom_linear_hysteresis_, DEFAULT_ODOM_LINEAR_HYSTERESIS, false);
   readParam(pnh_, "odom_angular_hysteresis", odom_angular_hysteresis_, DEFAULT_ODOM_ANGULAR_HYSTERESIS, false);
 
+  double period_without_moving = 5.0;
+  readParam(pnh_, "period_of_robot_without_moving", period_without_moving, period_without_moving, false);
+  period_of_robot_without_moving_ = ros::Duration(period_without_moving);
+
   // int buffer_size_ = 100;
   // z_angular_velocity_buffer_ = boost::circular_buffer<double>(buffer_size_);
   // z_angular_velocity_buffer_
@@ -109,8 +112,7 @@ void ImuManager::rosPublish()
   }
   else
   {
-    if (status_msg_.calibration_status != CalibrationState::CALIBRATING and
-        status_msg_.calibration_status != CalibrationState::UNKNOWN)
+    if (status_msg_.calibration_status != CalibrationState::CALIBRATING)
     {
       status_msg_.next_check_countdown = int((time_for_next_check_ - ros::Time::now()).toSec());
     }
@@ -741,6 +743,14 @@ void ImuManager::switchToState(int new_state)
   previous_state = state;
   time_of_last_state_transition_ = ros::Time::now();
 
+  switch (new_state)
+  {
+    case robotnik_msgs::State::READY_STATE:
+      time_for_next_check_ = ros::Time::now();
+      time_of_last_robot_movement_ = ros::Time::now();
+      break;
+  }
+
   RCOMPONENT_INFO("%s -> %s", getStateString(state), getStateString(new_state));
   state = new_state;
 }
@@ -758,13 +768,25 @@ int ImuManager::getElapsedTimeSinceLastStateTransition()
 */
 bool ImuManager::isRobotMoving()
 {
-  if (fabs(robot_odom_.twist.twist.linear.x) > odom_linear_hysteresis_ or
-      fabs(robot_odom_.twist.twist.linear.y) > odom_linear_hysteresis_ or
-      fabs(robot_odom_.twist.twist.angular.z) > odom_angular_hysteresis_)
+  ros::Time t_now = ros::Time::now();
+  bool is_moving = (fabs(robot_odom_.twist.twist.linear.x) > odom_linear_hysteresis_ or
+                    fabs(robot_odom_.twist.twist.linear.y) > odom_linear_hysteresis_ or
+                    fabs(robot_odom_.twist.twist.angular.z) > odom_angular_hysteresis_);
+
+  if (is_moving == true)
   {
-    return true;
+    time_of_last_robot_movement_ = t_now;
   }
-  return false;
+  else
+  {
+    if (t_now - time_of_last_robot_movement_ < period_of_robot_without_moving_)
+    {
+      is_moving = true;
+    }
+  }
+  // RCOMPONENT_INFO_THROTTLE(1, "%lf secs without moving",
+  //                       (t_now - time_of_last_robot_movement_).toSec());
+  return is_moving;
 }
 
 /*!	\fn bool ImuManager::isOdomBeingReceived()
