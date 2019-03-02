@@ -22,6 +22,8 @@
 #include <std_msgs/String.h>
 #include <std_srvs/Trigger.h>
 
+#include <mavros_msgs/State.h>
+
 namespace imu_manager
 {
 #define WAITING_TIME_BEFORE_RECOVERY 5.0
@@ -149,6 +151,7 @@ private:
   void dataCallback(const sensor_msgs::Imu::ConstPtr& input);
   void temperatureCallback(const sensor_msgs::Temperature::ConstPtr& input);
   void odomCallback(const nav_msgs::Odometry::ConstPtr& odom);
+  void mavrosStateCallback(const mavros_msgs::State::ConstPtr& state);
   bool triggerCalibrationCallback(std_srvs::Trigger::Request& request, std_srvs::Trigger::Response& response);
 
   std::vector<double> z_angular_velocity_buffer_;
@@ -172,7 +175,7 @@ private:
   bool hw_initialized_, hw_running_;
 
   std::vector<ros::Subscriber> data_subscribers_;
-  ros::Subscriber data_sub_, temperature_sub_, odom_sub_;
+  ros::Subscriber data_sub_, temperature_sub_, odom_sub_, mavros_state_sub_;
   std::vector<TopicHealthMonitor> data_health_monitors_;
 
   ros::Publisher internal_state_pub_;
@@ -183,6 +186,7 @@ private:
   std::string data_topic_;
   std::string temperature_topic_;
   std::string odom_topic_;
+  std::string mavros_state_topic_;
 
   ros::Time time_of_last_calibration_;
   ros::Time start_of_calibration_;
@@ -211,6 +215,7 @@ private:
   // MAVROS
   ros::Duration duration_of_calibration_;
   ros::ServiceClient calibrate_gyros_;
+  mavros_msgs::State mavros_state_;
 
   imu_manager::ImuManagerStatus status_msg_;
 };

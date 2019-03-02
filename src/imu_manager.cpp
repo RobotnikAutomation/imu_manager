@@ -91,6 +91,9 @@ void ImuManager::rosReadParams()
   readParam(pnh_, "period_of_robot_without_moving", period_without_moving, period_without_moving, false);
   period_of_robot_without_moving_ = ros::Duration(period_without_moving);
 
+  mavros_state_topic_ = "mavros/state";
+  readParam(pnh_, "mavros_state_topic", mavros_state_topic_, mavros_state_topic_, required);
+
   // int buffer_size_ = 100;
   // z_angular_velocity_buffer_ = boost::circular_buffer<double>(buffer_size_);
   // z_angular_velocity_buffer_
@@ -488,11 +491,27 @@ bool ImuManager::runCalibration()
   return true;
 }
 
+// Returns false when it completes the calibration
 bool ImuManager::isRunningCalibration()
 {
   // this implementation works for mavros
+  ros::Duration calibration_elapsed_time = (ros::Time::now() - start_of_calibration_);
 
-  return (ros::Time::now() - start_of_calibration_) < duration_of_calibration_;
+  // After a minimum elapsed time, it checks mavros state
+  if (calibration_elapsed_time > ros::Duration(10))
+  {
+    if (mavros_state_.system_status != 0)
+      return false;
+  }
+
+  if (calibration_elapsed_time > duration_of_calibration_)
+  {
+    RCOMPONENT_WARN_STREAM("Calibration time has exceed the defined duration ("
+                           << duration_of_calibration_.toSec() << ") without received the confirmation ");
+    return false;
+  }
+
+  return true;
 }
 
 // Implementation methods: to be implemented when different sensor is used
@@ -602,6 +621,10 @@ bool ImuManager::startSoftwareImpl()
     data_health_monitors_.push_back(TopicHealthMonitor(&odom_sub_));
   }
 
+  // subscribe to mavros/state
+  mavros_state_sub_ = gnh_.subscribe(mavros_state_topic_, 1, &ImuManager::mavrosStateCallback, this);
+  data_subscribers_.push_back(mavros_state_sub_);
+  data_health_monitors_.push_back(TopicHealthMonitor(&mavros_state_sub_));
   return true;
 }
 
@@ -664,6 +687,15 @@ void ImuManager::odomCallback(const nav_msgs::Odometry::ConstPtr& odom)
     data_health_monitors_[2].tick();
   }
   robot_odom_ = *odom;
+}
+
+void ImuManager::mavrosStateCallback(const mavros_msgs::State::ConstPtr& state)
+{
+  if (data_health_monitors_.size() > 1)
+  {
+    data_health_monitors_[3].tick();
+  }
+  mavros_state_ = *state;
 }
 
 double ImuManager::getMean()
