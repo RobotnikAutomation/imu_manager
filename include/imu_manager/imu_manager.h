@@ -145,6 +145,8 @@ protected:
   virtual void mustCalibrateSubState();
   virtual void calibratingSubState();
 
+  virtual void updateTimeForNextCheck(ros::Duration period);
+
 private:
   ros::NodeHandle gnh_;
 

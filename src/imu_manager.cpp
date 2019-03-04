@@ -778,7 +778,7 @@ void ImuManager::switchToState(int new_state)
   switch (new_state)
   {
     case robotnik_msgs::State::READY_STATE:
-      time_for_next_check_ = ros::Time::now();
+      updateTimeForNextCheck(period_between_checkings_);
       time_of_last_robot_movement_ = ros::Time::now();
       break;
   }
@@ -917,7 +917,7 @@ void ImuManager::mustCheckSubState()
   }
 
   RCOMPONENT_WARN_THROTTLE(10, "No calibration is needed for now");
-  time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+  updateTimeForNextCheck(period_between_checkings_);
   calibration_state_.setDesiredState(calibration_state_.getPreviousState(), "Check for calibration failed");
   return;
 }
@@ -930,7 +930,7 @@ void ImuManager::checkingSubState()
     {
       RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving during " << CalibrationState::CHECKING << ". Cancelling "
                                                                                                     "calibration");
-      time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+      updateTimeForNextCheck(period_between_checkings_);
       calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration cancelled due to robot "
                                                                            "movement during data gathering");
       return;
@@ -948,7 +948,7 @@ void ImuManager::checkingSubState()
   }
   else
   {
-    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    updateTimeForNextCheck(period_between_checkings_);
     calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration by angular velocity is disabled");
     return;
   }
@@ -974,7 +974,7 @@ void ImuManager::checkingSubState()
     {
       RCOMPONENT_ERROR("Error enabling the robot operation!!");
     }
-    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    updateTimeForNextCheck(period_between_checkings_);
     calibration_state_.setDesiredState(CalibrationState::CALIBRATED, "Imu is calibrated");
     return;
   }
@@ -995,7 +995,7 @@ return;
   if (false == toggleRobotOperation(false))
   {
     RCOMPONENT_ERROR("Error disabling the robot operation!!");
-    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    updateTimeForNextCheck(period_between_checkings_);
     calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Robot movement couldn't be disabled");
     return;
   }
@@ -1014,7 +1014,7 @@ return;
   }
   if (false == started_calibration)
   {
-    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    updateTimeForNextCheck(period_between_checkings_);
     calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process could not start");
     if (false == toggleRobotOperation(true))
     {
@@ -1040,7 +1040,7 @@ void ImuManager::calibratingSubState()
       }
       calibration_state_.setDesiredState(CalibrationState::NOT_CALIBRATED, "Calibration process failed due to robot "
                                                                            "movement");
-      time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+      updateTimeForNextCheck(period_between_checkings_);
       return;
     }
     // RCOMPONENT_INFO_STREAM_THROTTLE(5, "Running calibration for " <<
@@ -1064,11 +1064,16 @@ void ImuManager::calibratingSubState()
       temperature_at_last_calibration_ = current_temperature_;
     }
 
-    time_for_next_check_ = ros::Time::now() + period_between_checkings_;
+    updateTimeForNextCheck(period_between_checkings_);
     calibration_state_.setDesiredState(CalibrationState::CALIBRATED, "After finishing calibration");
     return;
   }
   return;
+}
+
+void ImuManager::updateTimeForNextCheck(ros::Duration period)
+{
+  time_for_next_check_ = ros::Time::now() + period;
 }
 
 }  // namespace
