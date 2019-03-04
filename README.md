@@ -2,7 +2,7 @@
 
 Package that manages imu calibration and its state.
 
-Will check current calibration state of the IMU and in case it needs a recalibration, and in that case will run the calibration method. 
+Will check current calibration state of the IMU and in case it needs a recalibration, and in that case will run the calibration method.
 
 To check calibration and run calibration method robot must be stopped. In order to check that the robot is not moving, it can be set to read the odometry from it.
 
@@ -114,6 +114,9 @@ Hysteresis for the linear velocity
 
 Hysteresis for the angular velocity
 
+**period_of_robot_without_moving** (double, default: 5.0)
+
+Period to consider that the robot is not moving after it has really stopped
 
 ## TODO
 
