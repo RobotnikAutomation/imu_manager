@@ -30,12 +30,41 @@ Temperature data stream
 
 Robot odometry (optional)
 
+**mavros/data** (mavros_msgs/State)
+
+Mavros State
 
 ## published topics
 
 **~/calibration_state** (std_msgs/String)
 
+Current state of calibration (*calibrated, must_check, checking, must_calibrate, calibrating, not_calibrated, unknown*)
+
+**~/state** (robotnik_msgs/State)
+
 Current state of the internal state machine
+
+**~/status** (imu_manager/ImuManagerStatus)
+
+Current status of the calibration along with robot & sensor information.
+
+Example:
+
+```
+header:
+  seq: 10488
+  stamp:
+    secs: 666
+    nsecs: 590000000
+  frame_id: ''
+calibration_status: "calibrated"
+next_check_countdown: 49
+calibration_duration: 0
+imu_temperature: 38.719997406
+calibrated_imu_temperature: 37.6599998474
+robot_moving: False
+
+```
 
 ## required services
 **robotnik_base_control/enable** (robotnik_msgs::enable_disable)
@@ -121,3 +150,4 @@ Period to consider that the robot is not moving after it has really stopped
 ## TODO
 
 - Add interfaces for different IMUS.
+- Move custom msgs into imu_manager_msgs?
