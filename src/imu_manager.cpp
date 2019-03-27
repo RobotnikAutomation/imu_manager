@@ -497,21 +497,28 @@ bool ImuManager::isRunningCalibration()
   // this implementation works for mavros
   ros::Duration calibration_elapsed_time = (ros::Time::now() - start_of_calibration_);
 
-  // After a minimum elapsed time, it checks mavros state
-  if (calibration_elapsed_time > ros::Duration(10))
+  if (data_health_mavros_state_->isReceiving())
   {
-    if (mavros_state_.system_status != 0)
+    // After a minimum elapsed time, it checks mavros state
+    if (calibration_elapsed_time > ros::Duration(10))
+    {
+      if (mavros_state_.system_status != 0)
+        return false;
+    }
+
+    if (calibration_elapsed_time > duration_of_calibration_)
+    {
+      RCOMPONENT_WARN_STREAM("Calibration time has exceed the defined duration ("
+                             << duration_of_calibration_.toSec() << ") without received the confirmation ");
       return false;
-  }
+    }
 
-  if (calibration_elapsed_time > duration_of_calibration_)
+    return true;
+  }
+  else
   {
-    RCOMPONENT_WARN_STREAM("Calibration time has exceed the defined duration ("
-                           << duration_of_calibration_.toSec() << ") without received the confirmation ");
-    return false;
+    return (ros::Time::now() - start_of_calibration_) < duration_of_calibration_;
   }
-
-  return true;
 }
 
 // Implementation methods: to be implemented when different sensor is used
@@ -624,7 +631,7 @@ bool ImuManager::startSoftwareImpl()
   // subscribe to mavros/state
   mavros_state_sub_ = gnh_.subscribe(mavros_state_topic_, 1, &ImuManager::mavrosStateCallback, this);
   data_subscribers_.push_back(mavros_state_sub_);
-  data_health_monitors_.push_back(TopicHealthMonitor(&mavros_state_sub_));
+  data_health_mavros_state_ = new TopicHealthMonitor(&mavros_state_sub_);
   return true;
 }
 
@@ -691,10 +698,8 @@ void ImuManager::odomCallback(const nav_msgs::Odometry::ConstPtr& odom)
 
 void ImuManager::mavrosStateCallback(const mavros_msgs::State::ConstPtr& state)
 {
-  if (data_health_monitors_.size() > 1)
-  {
-    data_health_monitors_[3].tick();
-  }
+  data_health_mavros_state_->tick();
+
   mavros_state_ = *state;
 }
 

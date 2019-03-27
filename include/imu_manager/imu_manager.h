@@ -179,6 +179,7 @@ private:
   std::vector<ros::Subscriber> data_subscribers_;
   ros::Subscriber data_sub_, temperature_sub_, odom_sub_, mavros_state_sub_;
   std::vector<TopicHealthMonitor> data_health_monitors_;
+  TopicHealthMonitor* data_health_mavros_state_;
 
   ros::Publisher internal_state_pub_;
   ros::Publisher internal_status_pub_;

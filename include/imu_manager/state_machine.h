@@ -55,7 +55,7 @@ public:
   {
     return desired_state_;
   }
-  
+
   std::string getPreviousState()
   {
     return previous_state_;
