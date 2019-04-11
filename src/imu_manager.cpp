@@ -996,6 +996,11 @@ RCOMPONENT_WARN_THROTTLE(10, "I need to run calibration, but I am not able to do
 it");
 return;
 }*/
+  if (isRobotMoving() == true)
+  {
+    RCOMPONENT_WARN_STREAM_THROTTLE(5, "Robot is moving. The robot operation will be disabled when the robot is stopped");
+    return;
+  }
 
   if (false == toggleRobotOperation(false))
   {
