@@ -1,6 +1,8 @@
 #ifndef _IMU_MANAGER_DATA_UTILS_
 #define _IMU_MANAGER_DATA_UTILS_
 
+#include <numeric>
+
 template <class T>
 double calculateMean(T data_buffer)
 {
